@@ -124,6 +124,19 @@ Escreva em português do Brasil (ou de Portugal se a oferta for PT), tom UGC fal
 
 **Criativos novos:** N roteiros com ângulos diferentes.
 
+**Formatos** (quando o usuário pedir "outros formatos" ou variar além do ângulo) — receitas com o kit:
+| Formato | Como montar |
+|---|---|
+| Tela dividida "parado × em movimento" | `layout: dividida`, `gancho_tela: false`, `midias` = problema (cima), `midias_baixo` = solução; `textos` fixos `desde: 0` com `y` ≈ 0.425 (vermelho, cima) e 0.515 (verde, baixo) |
+| Tour pela área de membros / produto | gravação da área (celular filmando ou tela) cortada por seção; `midias` na ordem das falas, `ritmo` alto, `textos` destacando cada seção (`y` ≈ 0.76) |
+| Pergunta frequente (quebra de objeção) | `gancho_estilo: "pergunta"`, hook = a pergunta; body responde mostrando o produto |
+| Lista numerada ("3 testes", "3 erros") | `textos` "Teste 1/2/3" em `palavra:primeiro/segundo/terceiro`, `ritmo` 12, uma mídia por item |
+| Comparação de preço ("o que R$ 10 compra") | `textos` por item em `palavra:lanche`… com a mídia de cada item, fecha no produto |
+| Depoimento | **Só com depoimento real** do usuário (vídeo/print de cliente). Nunca invente depoimento, cliente, comentário ou resultado — é propaganda enganosa e reprova no Meta. Sem material real, ofereça "Pergunta frequente". |
+
+Área de membros/app gravado em 4K/HEVC: corte por seção e reduza antes (`ffmpeg -ss A -to B -i x.MOV -an
+-vf "scale=1080:-2,fps=30" ... 02_brutos/area_<secao>.mp4`) — a montagem fica muito mais rápida.
+
 **Modelagem de criativos:** o criativo de referência fica em `08_validados` (ou baixe pelo link). Transcreva:
 `python "$KIT/transcrever.py" "<arquivo>"` — e, se a parte visual importar, assista com a skill `watch`.
 Mapeie a estrutura (tipo de hook, blocos e duração de cada um, CTA) e escreva N roteiros com **a mesma estrutura**
@@ -198,6 +211,18 @@ Campos:
 - `rotulos`: `["12 reps", "8 x lado", "30 seg"]` — rótulo pequeno sobre cada corte depois do hook, em ciclo.
 - `encaixe`: `corte` (padrão, recorta o centro) | `desfoque` — em tela cheia, vídeo horizontal aparece numa
   faixa larga sobre ele mesmo desfocado, sem perder o movimento (bom para demonstração de exercício).
+- `textos`: textos na tela com tempo — `[{"texto": "Teste 1", "desde": "palavra:primeiro", "ate": "proximo",
+  "cor": "#7C3AED", "cor_texto": "#FFFFFF", "y": 0.26, "tamanho": 62, "cortar": true}]`.
+  `desde`/`ate` aceitam segundos, `"fim_hook"`, `"fim"`, `"proximo"` (início do texto seguinte) ou
+  `"palavra:X"` (início da palavra X na narração — `desde` procura em ordem; `ate` procura depois do início
+  do próprio texto). Texto ancorado em palavra corta a imagem nesse instante (`cortar`, padrão true) e vai até
+  o próximo; texto com `desde` em segundos vai até `"fim"`. Os cortes obrigatórios (fim do hook + textos)
+  dividem o vídeo em seções e o `ritmo` corta só dentro delas — para uma lista, use `ritmo` alto (ex.: 12)
+  e uma mídia por item em `midias`, na ordem.
+- `gancho_estilo`: `"pergunta"` troca a faixa vermelha por um cartão branco de "PERGUNTA FREQUENTE"
+  (título muda com `gancho_titulo`).
+- `gancho_tela: false` desliga a faixa de gancho (útil na tela dividida com rótulos fixos em cada metade).
+
 
 IDs: `c01…cNN` em criativos novos, `m01…` em modelagem, `v01…` em variações — únicos por oferta, porque
 `05_audios/<id>` e `01_prontos/<id>.mp4` usam o id. Em lotes novos continue a numeração.

@@ -14,11 +14,13 @@ import random
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 from comum import (ALTURA, EXT_IMAGEM, FPS, LARGURA, binario, configurar_saida, duracao, ffmpeg, ler_json,
                    listar_midias, log, pasta_oferta, resolver, tem_audio)
-from legendas import ALTURA_CANVAS_LEGENDA, cor_rgba, render_faixa, render_rotulo, trilha_legendas
+from legendas import (ALTURA_CANVAS_LEGENDA, cor_rgba, render_cartao, render_faixa, render_rotulo,
+                      trilha_legendas)
 from narrar import narrar_criativo
 
 LINHA = 12                       # espessura da linha vermelha (par: cada metade precisa de altura par)
@@ -83,6 +85,81 @@ def _cortes(dur_total: float, palavras: list[dict], ritmo: float) -> list[float]
     return cortes
 
 
+def _cortes_em_secoes(dur: float, palavras: list[dict], ritmo: float, forcados: list[float]) -> list[float]:
+    """Cortes obrigatórios viram bordas de seção (os colados a menos de 0,7 s se fundem no primeiro);
+    dentro de cada seção, corta a cada ~ritmo s puxando para o início da palavra mais próxima."""
+    bordas = [0.0]
+    for t in sorted(forcados):
+        if 0.8 < t < dur - 0.8 and t - bordas[-1] >= 0.7:
+            bordas.append(round(t, 3))
+    inicios = [p["ini"] for p in palavras]
+    cortes = []
+    for a, b in zip(bordas, bordas[1:] + [dur]):
+        cortes.append(a)
+        t = a + ritmo
+        while t < b - 0.6:
+            perto = min(inicios, key=lambda x: abs(x - t)) if inicios else t
+            alvo = perto if abs(perto - t) < 0.5 and perto - cortes[-1] > 0.8 and perto < b - 0.6 else t
+            cortes.append(round(alvo, 3))
+            t = alvo + ritmo
+    return sorted(set(cortes))
+
+
+def _sem_acento(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn")
+
+
+def _resolver_textos(itens: list[dict], palavras: list[dict], fim_h: float, dur: float) -> list[dict]:
+    """Converte 'desde'/'ate' (segundos, 'fim_hook', 'fim', 'proximo', 'palavra:X') em instantes."""
+    normal = [re.sub(r"[^\w]", "", _sem_acento(p["t"])) for p in palavras]
+    cursor = 0
+
+    def achar(alvo: str, a_partir: float | None = None) -> float | None:
+        """'desde' avança em ordem pela narração; 'ate' procura a partir do início do próprio texto."""
+        nonlocal cursor
+        a = re.sub(r"[^\w]", "", _sem_acento(alvo))
+        inicio = cursor if a_partir is None else next(
+            (i for i, p in enumerate(palavras) if p["ini"] > a_partir + 0.01), len(palavras))
+        for i in range(inicio, len(palavras)):
+            if normal[i] == a:
+                if a_partir is None:
+                    cursor = i + 1
+                return float(palavras[i]["ini"])
+        return None
+
+    def tempo(v, padrao: float, a_partir: float | None = None) -> float:
+        if v is None:
+            return padrao
+        if isinstance(v, (int, float)):
+            return float(v)
+        if v == "fim_hook":
+            return fim_h
+        if v == "fim":
+            return dur
+        if isinstance(v, str) and v.startswith("palavra:"):
+            achado = achar(v.split(":", 1)[1], a_partir)
+            if achado is None:
+                log(f"aviso: palavra não encontrada na narração: {v}")
+            return achado if achado is not None else padrao
+        return padrao
+
+    saida = []
+    for it in itens:
+        desde = it.get("desde", 0)
+        ini = tempo(desde, 0.0)
+        saida.append({**it, "ini": ini, "_ate": it.get("ate", "proximo" if str(desde).startswith("palavra:") else "fim"),
+                      "cortar": it.get("cortar", str(desde).startswith("palavra:"))})
+    for i, tx in enumerate(saida):
+        prox = saida[i + 1]["ini"] if i + 1 < len(saida) else dur
+        if tx["_ate"] == "proximo":
+            tx["fim"] = prox
+        else:
+            fim = tempo(tx["_ate"], dur, tx["ini"])
+            # item de lista (ancorado em palavra) nunca invade o próximo; texto fixo vai até onde pediu
+            tx["fim"] = min(fim, prox) if str(tx.get("desde", "")).startswith("palavra:") and prox > tx["ini"] else fim
+    return saida
+
+
 def trilha(midias: list[Path], cortes: list[float], dur_total: float, w: int, h: int,
            pasta: Path, semente: int, embaralhar: bool = True, encaixe: str = "corte") -> Path:
     pasta.mkdir(parents=True, exist_ok=True)
@@ -127,11 +204,13 @@ def compor(oferta: Path, criativo: dict, estilo: str, narr: Path, meta: dict, sa
     rnd = random.Random(_semente(cid, "midias"))
     embaralhadas = list(todas)
     rnd.shuffle(embaralhadas)
-    cortes = _cortes(dur, palavras, float(criativo.get("ritmo", 2.2)))
-    # corte obrigatório no fim do hook: a troca de imagem coincide com a saída da faixa de gancho
+    # cortes obrigatórios: fim do hook (troca de imagem junto com a saída da faixa de gancho) e cada texto
+    # ancorado em palavra (ex.: "TESTE 1" na palavra "primeiro"). Eles dividem o vídeo em seções; o ritmo
+    # corta só dentro de cada seção, sem criar pedaços minúsculos colados nos obrigatórios.
     fim_h = float(meta.get("fim_hook") or 0)
-    if 0.8 < fim_h < dur - 0.8 and min(abs(c - fim_h) for c in cortes) > 0.3:
-        cortes = sorted([c for c in cortes if abs(c - fim_h) > 0.6] + [round(fim_h, 3)])
+    textos = _resolver_textos(criativo.get("textos") or [], palavras, fim_h, dur)
+    forcados = [fim_h] + [tx["ini"] for tx in textos if tx["cortar"]]
+    cortes = _cortes_em_secoes(dur, palavras, float(criativo.get("ritmo", 2.2)), forcados)
 
     if layout == "dividida":
         meio = max(1, len(embaralhadas) // 2)
@@ -198,9 +277,15 @@ def compor(oferta: Path, criativo: dict, estilo: str, narr: Path, meta: dict, sa
     fim_gancho = max(float(meta.get("fim_hook") or 0), 1.5)
     if gancho and criativo.get("gancho_tela") is not False:
         png = pasta / "gancho.png"
-        render_faixa(gancho, png)
+        y_g = y_faixa
+        if criativo.get("gancho_estilo") == "pergunta":
+            # cartão branco de "pergunta frequente" no lugar da faixa vermelha
+            render_cartao(gancho, png, titulo=criativo.get("gancho_titulo", "PERGUNTA FREQUENTE"))
+            y_g = str(int(ALTURA * 0.17)) if layout != "dividida" else "(H-h)/2"
+        else:
+            render_faixa(gancho, png)
         entradas += ["-loop", "1", "-t", f"{dur:.3f}", "-i", png]
-        filtros.append(f"{atual}[{idx}:v]overlay=(W-w)/2:{y_faixa}:enable='between(t,0,{fim_gancho:.3f})'[vg]")
+        filtros.append(f"{atual}[{idx}:v]overlay=(W-w)/2:{y_g}:enable='between(t,0,{fim_gancho:.3f})'[vg]")
         atual, idx = "[vg]", idx + 1
     if criativo.get("cta_tela"):
         png = pasta / "cta.png"
@@ -247,6 +332,19 @@ def compor(oferta: Path, criativo: dict, estilo: str, narr: Path, meta: dict, sa
             entradas += ["-loop", "1", "-t", f"{dur:.3f}", "-i", png]
             filtros.append(f"{atual}[{idx}:v]overlay=(W-w)/2:{y_rot}:enable='{cond}'[vr{n}]")
             atual, idx = f"[vr{n}]", idx + 1
+    # textos com tempo (marcadores de lista, destaques do tour, rótulos fixos de cada metade)
+    for n, tx in enumerate(textos):
+        if tx["fim"] - tx["ini"] < 0.2:
+            continue
+        png = pasta / f"texto_{n}.png"
+        render_faixa(tx["texto"], png, cor=cor_rgba(tx.get("cor"), (17, 17, 17, 255)),
+                     cor_texto=cor_rgba(tx.get("cor_texto"), (255, 255, 255, 255)),
+                     caixa_alta=bool(tx.get("caixa_alta", True)), tamanho=int(tx.get("tamanho", 62)))
+        y_tx = int(ALTURA * float(tx.get("y", 0.30)))
+        entradas += ["-loop", "1", "-t", f"{dur:.3f}", "-i", png]
+        filtros.append(f"{atual}[{idx}:v]overlay=(W-w)/2:{y_tx}:"
+                       f"enable='between(t,{tx['ini']:.3f},{tx['fim']:.3f})'[vt{n}]")
+        atual, idx = f"[vt{n}]", idx + 1
     filtros.append(f"{atual}[leg]overlay=0:{y_leg}:eof_action=pass,format=yuv420p[v]")
 
     # áudio: narração + whoosh nos cortes + pop no início + música opcional

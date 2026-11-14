@@ -129,6 +129,35 @@ def render_faixa(texto: str, destino: Path, cor=VERMELHO, cor_texto=BRANCO, caix
     return w, h
 
 
+def render_cartao(texto: str, destino: Path, titulo: str = "PERGUNTA FREQUENTE") -> tuple[int, int]:
+    """Cartão branco de pergunta (formato FAQ): título pequeno cinza + pergunta em preto."""
+    f = _fonte("gancho", 60)
+    ft = _fonte("gancho", 32)
+    pals = texto.split()
+    espaco = int(60 * 0.28)
+    linhas = _quebrar_linhas(pals, f, espaco, 820)
+    asc, desc = f.getmetrics()
+    alt_l = asc + desc + 6
+    at, dt = ft.getmetrics()
+    pad = 44
+    larg = [f.getlength(" ".join(pals[i] for i in ln)) for ln in linhas]
+    w = int(max(max(larg), ft.getlength(titulo)) + 2 * pad)
+    w = max(w, 640)
+    h = int(pad + at + dt + 18 + alt_l * len(linhas) + pad)
+    img = Image.new("RGBA", (w + 16, h + 16), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([10, 12, w + 10, h + 12], radius=34, fill=(0, 0, 0, 90))  # sombra
+    d.rounded_rectangle([0, 0, w, h], radius=34, fill=BRANCO)
+    d.ellipse([pad, pad + 2, pad + at - 4, pad + at - 2], fill=ROXO)
+    d.text((pad + at + 8, pad), titulo, font=ft, fill=(110, 110, 120, 255))
+    y = pad + at + dt + 18
+    for ln in linhas:
+        d.text((pad, y), " ".join(pals[i] for i in ln), font=f, fill=(17, 17, 17, 255))
+        y += alt_l
+    img.save(destino)
+    return img.size
+
+
 def render_rotulo(texto: str, destino: Path, tamanho: int = 60) -> tuple[int, int]:
     """Rótulo pequeno sobre o exercício (ex.: '12 reps', '8 x lado'): branco com contorno, sem caixa."""
     f = _fonte("legenda", tamanho)
