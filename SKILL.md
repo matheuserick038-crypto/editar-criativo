@@ -72,6 +72,18 @@ Nunca imprima a chave nem a coloque em comando de shell.
 Liste `02_brutos`, `03_apresentadora` e `04_imagens`. Fontes de material, nesta ordem de preferência:
 
 1. **Material do próprio usuário** (fotos/vídeos do produto, gravação da página): sempre o melhor.
+   - **Vídeos que o usuário baixou** (Pinterest, TikTok, Reels — às vezes numa pasta à parte, separados por
+     tema): faça uma folha de miniaturas (5 quadros por vídeo) para ver o conteúdo, depois corte em cenas limpas:
+     ```powershell
+     python "$KIT/cenas.py" "<pasta_oferta>" "<video.mp4>" --prefixo usr_costas_a --ate 8.0
+     python "$KIT/cenas.py" "<pasta_oferta>" "<video.mp4>" --listar   # só mostra as cenas
+     ```
+     Cada troca de plano vira um clipe sem áudio em `02_brutos/<prefixo>_NN.mp4`. Use `--ate`/`--de` para
+     deixar de fora o que não pode entrar: **anúncio/logo/site de outra marca no fim** (comum em compilações),
+     vinheta, número animado. Use prefixos por tema (`usr_pc_`, `usr_costas_`, `usr_demo_`) — facilita montar
+     `midias_gancho` (clipes de problema/dor) e `midias` (demonstração).
+   - Evite no corpo clipes com texto gravado no meio da tela (conflita com `rotulos`); texto no topo some
+     sob a `faixa_fixa`. Vídeo de terceiros: avise o usuário do risco de direitos autorais em anúncio pago.
 2. **Bancos gratuitos (Pexels + Pixabay)** — b-roll de apoio, uso comercial liberado:
    ```powershell
    python "$KIT/buscar_midias.py" "<pasta_oferta>" "candle making" --qtd 6
