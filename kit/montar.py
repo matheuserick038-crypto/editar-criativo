@@ -85,13 +85,18 @@ def _cortes(dur_total: float, palavras: list[dict], ritmo: float) -> list[float]
     return cortes
 
 
-def _cortes_em_secoes(dur: float, palavras: list[dict], ritmo: float, forcados: list[float]) -> list[float]:
-    """Cortes obrigatórios viram bordas de seção (os colados a menos de 0,7 s se fundem no primeiro);
-    dentro de cada seção, corta a cada ~ritmo s puxando para o início da palavra mais próxima."""
+def _bordas(dur: float, forcados: list[float]) -> list[float]:
     bordas = [0.0]
     for t in sorted(forcados):
         if 0.8 < t < dur - 0.8 and t - bordas[-1] >= 0.7:
             bordas.append(round(t, 3))
+    return bordas
+
+
+def _cortes_em_secoes(dur: float, palavras: list[dict], ritmo: float, forcados: list[float]) -> list[float]:
+    """Cortes obrigatórios viram bordas de seção (os colados a menos de 0,7 s se fundem no primeiro);
+    dentro de cada seção, corta a cada ~ritmo s puxando para o início da palavra mais próxima."""
+    bordas = _bordas(dur, forcados)
     inicios = [p["ini"] for p in palavras]
     cortes = []
     for a, b in zip(bordas, bordas[1:] + [dur]):
@@ -150,7 +155,9 @@ def _resolver_textos(itens: list[dict], palavras: list[dict], fim_h: float, dur:
         saida.append({**it, "ini": ini, "_ate": it.get("ate", "proximo" if str(desde).startswith("palavra:") else "fim"),
                       "cortar": it.get("cortar", str(desde).startswith("palavra:"))})
     for i, tx in enumerate(saida):
-        prox = saida[i + 1]["ini"] if i + 1 < len(saida) else dur
+        # "próximo" = o próximo texto ancorado em palavra que começa depois deste (rodapés fixos não contam)
+        prox = next((s["ini"] for s in saida[i + 1:]
+                     if str(s.get("desde", "")).startswith("palavra:") and s["ini"] > tx["ini"] + 0.01), dur)
         if tx["_ate"] == "proximo":
             tx["fim"] = prox
         else:
@@ -241,6 +248,23 @@ def compor(oferta: Path, criativo: dict, estilo: str, narr: Path, meta: dict, sa
                 else:
                     seq.append(midias[b % len(midias)])
                     b += 1
+            midias, embaralhar = seq, False
+        secoes = [tx for tx in textos if tx.get("midias") and tx["cortar"]]
+        if secoes:
+            # textos com "midias" próprias: os cortes daquela seção usam só essas mídias (ex.: cada item da lista)
+            base_seq = midias if not embaralhar else list(midias)
+            bordas = _bordas(dur, forcados)
+            seq, usados = [], {}
+            for i, c in enumerate(cortes):
+                ini_secao = max(b for b in bordas if b <= c + 0.01)
+                dono = next((tx for tx in secoes if abs(tx["ini"] - ini_secao) < 0.75), None)
+                if dono:
+                    lst = [resolver(oferta, m) for m in dono["midias"]]
+                    k = usados.get(id(dono), 0)
+                    seq.append(lst[k % len(lst)])
+                    usados[id(dono)] = k + 1
+                else:
+                    seq.append(base_seq[i % len(base_seq)])
             midias, embaralhar = seq, False
         base = trilha(midias, cortes, dur, LARGURA, ALTURA, pasta / "cheia", _semente(cid, "cheia"),
                       embaralhar=embaralhar, encaixe=criativo.get("encaixe", "corte"))

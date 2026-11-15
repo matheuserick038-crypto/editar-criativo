@@ -124,6 +124,14 @@ Escreva em português do Brasil (ou de Portugal se a oferta for PT), tom UGC fal
 
 **Criativos novos:** N roteiros com ângulos diferentes.
 
+**Avatar do usuário** (documento de persona/pesquisa — ex.: "SEARCH 1 - <oferta>.txt" no cofre): leia inteiro e
+escreva a partir dele, não de suposições. Use: subnicho prioritário; cenas de "Everyday Life Relatability"
+como gancho (reconhecível em 2 s); as palavras de "Verbal Triggers" (e evite as que espantam); "Common Enemy";
+"False Solutions" e "Comparisons" (listas e preço); objeções e "Confusions" (formato pergunta); "Metaphor
+Mapping"; tom de "Communication Style". **O preço e a oferta vêm do documento** — se divergirem do validado ou
+de lotes antigos, siga o documento e avise o usuário. Inclua o rodapé "Não substitui acompanhamento
+profissional." quando o documento pedir. Duração pedida (ex.: ~35 s ≈ 90 palavras com a voz Thalita a +0%).
+
 **Formatos** (quando o usuário pedir "outros formatos" ou variar além do ângulo) — receitas com o kit:
 | Formato | Como montar |
 |---|---|
@@ -219,6 +227,10 @@ Campos:
   o próximo; texto com `desde` em segundos vai até `"fim"`. Os cortes obrigatórios (fim do hook + textos)
   dividem o vídeo em seções e o `ritmo` corta só dentro delas — para uma lista, use `ritmo` alto (ex.: 12)
   e uma mídia por item em `midias`, na ordem.
+- `textos[].midias`: mídias próprias da seção daquele texto (ex.: cada item de uma lista com suas 2–3
+  imagens). Com isso o `ritmo` pode ser normal (~1.9) sem bagunçar qual imagem cai em cada item.
+- Garanta que `midias` (corpo) tenha pelo menos tantas mídias quantos cortes: quando a lista acaba ela
+  recomeça, e a imagem de dor do começo volta em cima da garantia/CTA. Termine a lista com imagens positivas.
 - `gancho_estilo`: `"pergunta"` troca a faixa vermelha por um cartão branco de "PERGUNTA FREQUENTE"
   (título muda com `gancho_titulo`).
 - `gancho_tela: false` desliga a faixa de gancho (útil na tela dividida com rótulos fixos em cada metade).
